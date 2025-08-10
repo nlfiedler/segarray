@@ -1,0 +1,18 @@
+[package]
+name = "segarray"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nathan Fiedler <nathanfiedler@fastmail.fm>"]
+description = "FastCDC (content defined chunking) in pure Rust."
+repository = "https://github.com/nlfiedler/segarray"
+readme = "README.md"
+keywords = ["collections", "segmented", "arrays"]
+license = "MIT"
+exclude = [
+    "TODO.org",
+    "test/*",
+]
+
+[dev-dependencies]
+rand = "0.9.2"
+ulid = "1.2.1"

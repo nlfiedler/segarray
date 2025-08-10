@@ -1,0 +1,25 @@
+* Segmented Array
+** prototype
+*** DONE implement =Drop= to dealloc the segments
+*** DONE test outputs malloc/free error; maybe fixed
+**** the =test_add_get_several= test fails >50% of runs
+**** error output from =cargo test=
+#+begin_src
+malloc: *** error for object 0x6000011e4220: pointer being freed was not allocated
+#+end_src
+**** probably because the =String= is allocated and moves vs u64 which copies
+*** DONE add test that uses a small struct vs a string (i.e. stack vs heap)
+*** DONE write a test that allocates an array, fills it with many items, drops it, and repeat numerous times
+*** DONE use =ulid= to generate many random strings for an example
+*** TODO use the =ulid= example to run ASAN or similar to detect leaks
+*** TODO make sure =.iter().collect()= can be used to create an array
+*** TODO determine which traits it should implement
+- Iter
+- IntoIter
+- directly reference elements
+*** DONE reduce unwrap() and expect() usage if appropriate
+** testing
+*** benchmarks
+**** TODO compare to =Vec=
+**** TODO compare to =HashSet=
+**** TODO compare to =BTreeSet=
