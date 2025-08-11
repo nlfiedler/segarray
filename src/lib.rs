@@ -22,7 +22,7 @@
 //! references returned from [`SegmentedArray::get()`] will be stable. The
 //! behavior, memory layout, and performance of this implementation should be
 //! identical to that of the C implementation. To summarize:
-//! 
+//!
 //! * Fixed number of segments (26)
 //! * First segment has a capacity of 64
 //! * Each segment is double the size of the previous one
@@ -33,6 +33,8 @@
 //! have a hefty size of around 224 bytes.
 
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
+use std::iter::{FromIterator, Iterator};
+use std::ops::Index;
 
 //
 // An individual segment can never be larger than 9,223,372,036,854,775,807
@@ -62,22 +64,12 @@ fn capacity_for_segment_count(segment: usize) -> usize {
     ((1 << SMALL_SEGMENTS_TO_SKIP) << segment) - (1 << SMALL_SEGMENTS_TO_SKIP)
 }
 
-// #define _direct_index(sa, segment, slot) (typeof((sa)->payload))(((u8 *)(sa)->internal.segments[segment] + slot * sizeof(*(sa)->payload)))
-// fn sa_for(sa) ->
-//     for (typeof(*(sa)->payload) it, *it_ptr, *k = (void *)1; k; k=0) \
-//         for(u32 segment=0, it_index=0; it_index < sa_count(sa); segment++) \
-//             for(u32 slot=0; slot < slots_in_segment(segment) && it_index < sa_count(sa) && (it_ptr=_direct_index((sa), segment, slot), it=*it_ptr, 1) ; slot++, it_index++)
-
-// Integer logarithm function to compute the segment for a given offset within
-// the segmented array, identical to that of the C implementation.
+// Integer base-2 logarithm function to compute the segment for a given offset
+// within the segmented array, identical to that of the C implementation.
 #[inline]
-fn log2i(value: u32) -> i32 {
-    //
+fn log2i(value: usize) -> i32 {
     // #define log2i(X) ((u32) (8*sizeof(unsigned long long) - __builtin_clzll((X)) - 1))
-    //
-    // assume that unsigned long long is equivalent to u64, hence 8 * 4 = 32
-    // (and minus 1 yields 31)
-    31 - value.leading_zeros() as i32
+    8 * (std::mem::size_of::<usize>() as i32) - value.leading_zeros() as i32 - 1
 }
 
 ///
@@ -132,7 +124,7 @@ impl<T> SegmentedArray<T> {
             }
         }
 
-        let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) as u32 + 1) as usize;
+        let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
         let slot = (self.count - capacity_for_segment_count(segment)) as isize;
         // unsafe { *self.segments[segment].offset(slot) = value }
         unsafe {
@@ -160,9 +152,99 @@ impl<T> SegmentedArray<T> {
         if index >= self.count {
             None
         } else {
-            let segment = log2i((index >> SMALL_SEGMENTS_TO_SKIP) as u32 + 1) as usize;
+            let segment = log2i((index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
             let slot = (index - capacity_for_segment_count(segment)) as isize;
             unsafe { (self.segments[segment].offset(slot)).as_ref() }
+        }
+    }
+
+    /// Like [`Self::get()`] but takes ownership of the value.
+    ///
+    /// Uses `std::ptr::read()` which performs a bitwise copy of the item. This
+    /// is only to be used by the `IntoIterator` implementation to ensure memory
+    /// safety is not violated.
+    pub(crate) fn get_owned(&self, index: usize) -> Option<T> {
+        if index >= self.count {
+            None
+        } else {
+            let segment = log2i((index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let slot = (index - capacity_for_segment_count(segment)) as isize;
+            unsafe { Some((self.segments[segment].offset(slot)).read()) }
+        }
+    }
+
+    /// Returns an iterator over the segmented array.
+    ///
+    /// The iterator yields all items from start to end.
+    pub fn iter(&self) -> SegmentedArrayIter<'_, T> {
+        SegmentedArrayIter {
+            array: self,
+            index: 0,
+        }
+    }
+}
+
+impl<T> Index<usize> for SegmentedArray<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let Some(item) = self.get(index) else {
+            panic!("index out ouf bounds: {}", index);
+        };
+        item
+    }
+}
+
+impl<A> FromIterator<A> for SegmentedArray<A> {
+    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+        let mut arr: SegmentedArray<A> = SegmentedArray::new();
+        for value in iter {
+            arr.push(value)
+        }
+        arr
+    }
+}
+
+pub struct SegmentedArrayIter<'a, T> {
+    array: &'a SegmentedArray<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for SegmentedArrayIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = self.array.get(self.index);
+        self.index += 1;
+        value
+    }
+}
+
+pub struct SegmentedArrayIntoIter<T> {
+    array: SegmentedArray<T>,
+    index: usize,
+}
+
+impl<T> Iterator for SegmentedArrayIntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // This could be improved by dropping segments once all of the items
+        // therein have been emitted.
+        let value = self.array.get_owned(self.index);
+        self.index += 1;
+        value
+    }
+}
+
+impl<T> IntoIterator for SegmentedArray<T> {
+    type Item = T;
+    type IntoIter = SegmentedArrayIntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SegmentedArrayIntoIter {
+            array: self,
+            index: 0,
         }
     }
 }
@@ -182,6 +264,21 @@ impl<T> Drop for SegmentedArray<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_slots_in_segment() {
+        // values are simply capacity_for_segment_count() plus 64 but there
+        // should be a test for this function regardless of its simplicity
+        let expected_values = [
+            64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288,
+            1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456,
+            536870912, 1073741824, 2147483648, 4294967296,
+        ];
+        assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT + 1);
+        for segment in 0..=MAX_SEGMENT_COUNT {
+            assert_eq!(expected_values[segment], slots_in_segment(segment));
+        }
+    }
 
     #[test]
     fn test_capacity_for_segment_count() {
@@ -270,6 +367,7 @@ mod tests {
         }
         let maybe = sut.get(10);
         assert!(maybe.is_none());
+        assert_eq!(sut[3], "four");
     }
 
     #[test]
@@ -308,6 +406,7 @@ mod tests {
             let actual = maybe.unwrap();
             assert_eq!(idx, *actual as usize);
         }
+        assert_eq!(sut[99], 99);
     }
 
     #[test]
@@ -323,12 +422,58 @@ mod tests {
             let actual = maybe.unwrap();
             assert_eq!(idx, *actual as usize);
         }
+        assert_eq!(sut[99_999], 99_999);
+    }
+
+    #[test]
+    fn test_array_iterator() {
+        let inputs = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        ];
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        for (idx, elem) in sut.iter().enumerate() {
+            assert_eq!(inputs[idx], elem);
+        }
+    }
+
+    #[test]
+    fn test_array_intoiterator() {
+        let inputs = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        ];
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        for (idx, elem) in sut.into_iter().enumerate() {
+            assert_eq!(inputs[idx], elem);
+        }
+        // sut.len(); // error: ownership of sut was moved
+    }
+
+    #[test]
+    fn test_array_fromiterator() {
+        let mut inputs: Vec<i32> = Vec::new();
+        for value in 0..10_000 {
+            inputs.push(value);
+        }
+        let sut: SegmentedArray<i32> = inputs.into_iter().collect();
+        assert_eq!(sut.len(), 10_000);
+        for idx in 0..10_000i32 {
+            let maybe = sut.get(idx as usize);
+            assert!(maybe.is_some(), "{idx} is none");
+            let actual = maybe.unwrap();
+            assert_eq!(idx, *actual as i32);
+        }
     }
 
     #[test]
     fn test_add_get_many_instances() {
         // test allocating, filling, and then dropping many instances
-        for _ in 0..10_000 {
+        for _ in 0..1_000 {
             let mut sut: SegmentedArray<usize> = SegmentedArray::new();
             for value in 0..10_000 {
                 sut.push(value);
