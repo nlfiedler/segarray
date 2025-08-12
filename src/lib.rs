@@ -65,16 +65,6 @@ fn capacity_for_segment_count(segment: usize) -> usize {
     (SMALL_SEGMENTS_CAPACITY << segment) - SMALL_SEGMENTS_CAPACITY
 }
 
-const LOG2I_BASE: i32 = 8 * (std::mem::size_of::<usize>() as i32) - 1;
-
-// Integer base-2 logarithm function to compute the segment for a given offset
-// within the segmented array, identical to that of the C implementation.
-#[inline]
-fn log2i(value: usize) -> i32 {
-    // #define log2i(X) ((u32) (8*sizeof(unsigned long long) - __builtin_clzll((X)) - 1))
-    LOG2I_BASE - value.leading_zeros() as i32
-}
-
 ///
 /// Append-only growable array that uses a list of progressivly larger segments
 /// to avoid the allocate-and-copy that typical growable data structures employ.
@@ -127,7 +117,7 @@ impl<T> SegmentedArray<T> {
             self.used_segments += 1;
         }
 
-        let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+        let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
         let slot = (self.count - capacity_for_segment_count(segment)) as isize;
         unsafe {
             let end: *mut T = self.segments[segment].offset(slot);
@@ -141,7 +131,7 @@ impl<T> SegmentedArray<T> {
     pub fn pop(&mut self) -> Option<T> {
         if self.count > 0 {
             self.count -= 1;
-            let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let slot = (self.count - capacity_for_segment_count(segment)) as isize;
             unsafe { Some((self.segments[segment].offset(slot)).read()) }
         } else {
@@ -172,7 +162,7 @@ impl<T> SegmentedArray<T> {
         if index >= self.count {
             None
         } else {
-            let segment = log2i((index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let slot = (index - capacity_for_segment_count(segment)) as isize;
             unsafe { (self.segments[segment].offset(slot)).as_ref() }
         }
@@ -196,7 +186,7 @@ impl<T> SegmentedArray<T> {
         if self.count > 0 {
             if std::mem::needs_drop::<T>() {
                 // find the last segment that contains values
-                let last_segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+                let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
                 let last_slot = self.count - capacity_for_segment_count(last_segment);
                 unsafe {
                     std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
@@ -270,7 +260,7 @@ impl<T> Iterator for SegArrayIntoIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.count {
-            let segment = log2i((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let segment = ((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let slot = (self.index - capacity_for_segment_count(segment)) as isize;
             self.index += 1;
             unsafe { Some((self.segments[segment].offset(slot)).read()) }
@@ -283,8 +273,8 @@ impl<T> Iterator for SegArrayIntoIter<T> {
 impl<T> Drop for SegArrayIntoIter<T> {
     fn drop(&mut self) {
         if std::mem::needs_drop::<T>() {
-            let first_segment = log2i((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
-            let last_segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let first_segment = ((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+            let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             if first_segment == last_segment {
                 // special-case, remaining values are in only one segment
                 let first_slot = self.index - capacity_for_segment_count(first_segment);
@@ -420,41 +410,6 @@ mod tests {
         for count in 0..=MAX_SEGMENT_COUNT {
             assert_eq!(expected_values[count], capacity_for_segment_count(count));
         }
-    }
-
-    #[test]
-    fn test_log2i() {
-        assert_eq!(log2i(0), -1);
-        assert_eq!(log2i(1), 0);
-        assert_eq!(log2i(2), 1);
-        assert_eq!(log2i(4), 2);
-        assert_eq!(log2i(11), 3);
-        assert_eq!(log2i(64), 6);
-        assert_eq!(log2i(192), 7);
-        assert_eq!(log2i(448), 8);
-        assert_eq!(log2i(960), 9);
-        assert_eq!(log2i(1984), 10);
-        assert_eq!(log2i(4032), 11);
-        assert_eq!(log2i(8128), 12);
-        assert_eq!(log2i(16320), 13);
-        assert_eq!(log2i(32704), 14);
-        assert_eq!(log2i(65472), 15);
-        assert_eq!(log2i(131008), 16);
-        assert_eq!(log2i(262080), 17);
-        assert_eq!(log2i(524224), 18);
-        assert_eq!(log2i(1048512), 19);
-        assert_eq!(log2i(2097088), 20);
-        assert_eq!(log2i(4194240), 21);
-        assert_eq!(log2i(8388544), 22);
-        assert_eq!(log2i(16777152), 23);
-        assert_eq!(log2i(33554368), 24);
-        assert_eq!(log2i(67108800), 25);
-        assert_eq!(log2i(134217664), 26);
-        assert_eq!(log2i(268435392), 27);
-        assert_eq!(log2i(536870848), 28);
-        assert_eq!(log2i(1073741760), 29);
-        assert_eq!(log2i(2147483584), 30);
-        assert_eq!(log2i(4294967232), 31);
     }
 
     #[test]
