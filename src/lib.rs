@@ -34,7 +34,7 @@
 
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::iter::{FromIterator, Iterator};
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 //
 // An individual segment can never be larger than 9,223,372,036,854,775,807
@@ -168,6 +168,17 @@ impl<T> SegmentedArray<T> {
         }
     }
 
+    /// Returns a mutable reference to an element.
+    pub fn get_mut(&self, index: usize) -> Option<&mut T> {
+        if index >= self.count {
+            None
+        } else {
+            let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+            let slot = (index - capacity_for_segment_count(segment)) as isize;
+            unsafe { (self.segments[segment].offset(slot)).as_mut() }
+        }
+    }
+
     /// Returns an iterator over the segmented array.
     ///
     /// The iterator yields all items from start to end.
@@ -215,6 +226,15 @@ impl<T> Index<usize> for SegmentedArray<T> {
 
     fn index(&self, index: usize) -> &Self::Output {
         let Some(item) = self.get(index) else {
+            panic!("index out ouf bounds: {}", index);
+        };
+        item
+    }
+}
+
+impl<T> IndexMut<usize> for SegmentedArray<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let Some(item) = self.get_mut(index) else {
             panic!("index out ouf bounds: {}", index);
         };
         item
@@ -451,12 +471,37 @@ mod tests {
     }
 
     #[test]
+    fn test_get_mut_index_mut() {
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        sut.push(String::from("first"));
+        sut.push(String::from("second"));
+        sut.push(String::from("third"));
+        if let Some(value) = sut.get_mut(1) {
+            value.push_str(" place");
+        } else {
+            panic!("get_mut() returned None")
+        }
+        assert_eq!(sut[1], "second place");
+        sut[2] = "third planet".into();
+        assert_eq!(sut[2], "third planet");
+    }
+
+    #[test]
     #[should_panic(expected = "index out ouf bounds:")]
     fn test_index_out_of_bounds() {
         let mut sut: SegmentedArray<i32> = SegmentedArray::new();
         sut.push(10);
         sut.push(20);
         let _ = sut[2];
+    }
+
+    #[test]
+    #[should_panic(expected = "index out ouf bounds:")]
+    fn test_index_mut_out_of_bounds() {
+        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        sut.push(10);
+        sut.push(20);
+        sut[2] = 30;
     }
 
     #[test]

@@ -77,3 +77,8 @@ Finding memory leaks with [Address Sanitizer](https://clang.llvm.org/docs/Addres
 env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
     cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --example many_ulids
 ```
+
+## Other Implementations
+
+* [rmeno12/segarray](https://github.com/rmeno12/segarray)
+    + Similar to the Zig implementation
