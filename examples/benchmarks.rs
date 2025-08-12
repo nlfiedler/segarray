@@ -1,7 +1,7 @@
 //
 // Copyright (c) 2025 Nathan Fiedler
 //
-use segarray::SegmentedArray;
+use segmented_array::SegmentedArray;
 use std::time::Instant;
 
 //

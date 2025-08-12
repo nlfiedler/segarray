@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Nathan Fiedler
 //
 use rand::prelude::*;
-use segarray::SegmentedArray;
+use segmented_array::SegmentedArray;
 
 //
 // Basically useless except that it can be tested with a memory analyzer to
