@@ -1,5 +1,5 @@
 [package]
-name = "segarray"
+name = "segmented_array"
 version = "1.0.0"
 edition = "2024"
 authors = ["Nathan Fiedler <nathanfiedler@fastmail.fm>"]

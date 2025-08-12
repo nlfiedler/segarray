@@ -496,6 +496,15 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "index out ouf bounds:")]
+    fn test_index_out_of_bounds() {
+        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        sut.push(10);
+        sut.push(20);
+        let _ = sut[2];
+    }
+
+    #[test]
     fn test_push_and_pop() {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
