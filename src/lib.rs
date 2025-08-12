@@ -51,25 +51,28 @@ const MAX_SEGMENT_COUNT: usize = 26;
 // smallest (first) segment is 64 elements in size) to avoid the overhead of
 // such tiny arrays.
 const SMALL_SEGMENTS_TO_SKIP: usize = 6;
+const SMALL_SEGMENTS_CAPACITY: usize = 1 << SMALL_SEGMENTS_TO_SKIP;
 
 // Calculates the number of elements that will fit into the given segment.
 #[inline]
 fn slots_in_segment(segment: usize) -> usize {
-    (1 << SMALL_SEGMENTS_TO_SKIP) << segment
+    SMALL_SEGMENTS_CAPACITY << segment
 }
 
 // Calculates the overall capacity for all segments up to the given segment.
 #[inline]
 fn capacity_for_segment_count(segment: usize) -> usize {
-    ((1 << SMALL_SEGMENTS_TO_SKIP) << segment) - (1 << SMALL_SEGMENTS_TO_SKIP)
+    (SMALL_SEGMENTS_CAPACITY << segment) - SMALL_SEGMENTS_CAPACITY
 }
+
+const LOG2I_BASE: i32 = 8 * (std::mem::size_of::<usize>() as i32) - 1;
 
 // Integer base-2 logarithm function to compute the segment for a given offset
 // within the segmented array, identical to that of the C implementation.
 #[inline]
 fn log2i(value: usize) -> i32 {
     // #define log2i(X) ((u32) (8*sizeof(unsigned long long) - __builtin_clzll((X)) - 1))
-    8 * (std::mem::size_of::<usize>() as i32) - value.leading_zeros() as i32 - 1
+    LOG2I_BASE - value.leading_zeros() as i32
 }
 
 ///
@@ -111,27 +114,39 @@ impl<T> SegmentedArray<T> {
                 "maximum number of segments exceeded"
             );
             let segment_len = slots_in_segment(self.used_segments);
+            // overflowing the allocator is very unlikely as the item size would
+            // have to be very large
+            let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
             unsafe {
-                // overflowing the allocator is very unlikely as the item size
-                // would have to be very large
-                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
                 let ptr = alloc(layout).cast::<T>();
                 if ptr.is_null() {
                     handle_alloc_error(layout);
                 }
                 self.segments[self.used_segments] = ptr;
-                self.used_segments += 1;
             }
+            self.used_segments += 1;
         }
 
         let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
         let slot = (self.count - capacity_for_segment_count(segment)) as isize;
-        // unsafe { *self.segments[segment].offset(slot) = value }
         unsafe {
             let end: *mut T = self.segments[segment].offset(slot);
             std::ptr::write(end, value);
         }
         self.count += 1;
+    }
+
+    /// Removes the last element from a vector and returns it, or `None` if it
+    /// is empty.
+    pub fn pop(&mut self) -> Option<T> {
+        if self.count > 0 {
+            self.count -= 1;
+            let segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let slot = (self.count - capacity_for_segment_count(segment)) as isize;
+            unsafe { Some((self.segments[segment].offset(slot)).read()) }
+        } else {
+            None
+        }
     }
 
     /// Return the number of elements in the array.
@@ -141,6 +156,11 @@ impl<T> SegmentedArray<T> {
     /// Constant time.
     pub fn len(&self) -> usize {
         self.count as usize
+    }
+
+    /// Returns true if the array has a length of 0.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
     }
 
     /// Retrieve a reference to the element at the given offset.
@@ -158,28 +178,44 @@ impl<T> SegmentedArray<T> {
         }
     }
 
-    /// Like [`Self::get()`] but takes ownership of the value.
-    ///
-    /// Uses `std::ptr::read()` which performs a bitwise copy of the item. This
-    /// is only to be used by the `IntoIterator` implementation to ensure memory
-    /// safety is not violated.
-    pub(crate) fn get_owned(&self, index: usize) -> Option<T> {
-        if index >= self.count {
-            None
-        } else {
-            let segment = log2i((index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
-            let slot = (index - capacity_for_segment_count(segment)) as isize;
-            unsafe { Some((self.segments[segment].offset(slot)).read()) }
-        }
-    }
-
     /// Returns an iterator over the segmented array.
     ///
     /// The iterator yields all items from start to end.
-    pub fn iter(&self) -> SegmentedArrayIter<'_, T> {
-        SegmentedArrayIter {
+    pub fn iter(&self) -> SegArrayIter<'_, T> {
+        SegArrayIter {
             array: self,
             index: 0,
+        }
+    }
+
+    /// Clears the segmented array, removing all values.
+    ///
+    /// Note that this method has no effect on the allocated capacity of the
+    /// segmented array.
+    pub fn clear(&mut self) {
+        if self.count > 0 {
+            if std::mem::needs_drop::<T>() {
+                // find the last segment that contains values
+                let last_segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+                let last_slot = self.count - capacity_for_segment_count(last_segment);
+                unsafe {
+                    std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                        self.segments[last_segment],
+                        last_slot,
+                    ));
+                }
+                // now drop the values in all of the preceding segments
+                for segment in 0..last_segment {
+                    let segment_len = slots_in_segment(segment);
+                    unsafe {
+                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                            self.segments[segment],
+                            segment_len,
+                        ));
+                    }
+                }
+            }
+            self.count = 0;
         }
     }
 }
@@ -205,12 +241,13 @@ impl<A> FromIterator<A> for SegmentedArray<A> {
     }
 }
 
-pub struct SegmentedArrayIter<'a, T> {
+/// Immutable segmented array iterator.
+pub struct SegArrayIter<'a, T> {
     array: &'a SegmentedArray<T>,
     index: usize,
 }
 
-impl<'a, T> Iterator for SegmentedArrayIter<'a, T> {
+impl<'a, T> Iterator for SegArrayIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -220,44 +257,130 @@ impl<'a, T> Iterator for SegmentedArrayIter<'a, T> {
     }
 }
 
-pub struct SegmentedArrayIntoIter<T> {
-    array: SegmentedArray<T>,
+/// An iterator that moves out of a segmented array.
+pub struct SegArrayIntoIter<T> {
     index: usize,
+    count: usize,
+    used_segments: usize,
+    segments: [*mut T; MAX_SEGMENT_COUNT],
 }
 
-impl<T> Iterator for SegmentedArrayIntoIter<T> {
+impl<T> Iterator for SegArrayIntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // This could be improved by dropping segments once all of the items
-        // therein have been emitted.
-        let value = self.array.get_owned(self.index);
-        self.index += 1;
-        value
+        if self.index < self.count {
+            let segment = log2i((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let slot = (self.index - capacity_for_segment_count(segment)) as isize;
+            self.index += 1;
+            unsafe { Some((self.segments[segment].offset(slot)).read()) }
+        } else {
+            None
+        }
+    }
+}
+
+impl<T> Drop for SegArrayIntoIter<T> {
+    fn drop(&mut self) {
+        if std::mem::needs_drop::<T>() {
+            let first_segment = log2i((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            let last_segment = log2i((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1) as usize;
+            if first_segment == last_segment {
+                // special-case, remaining values are in only one segment
+                let first_slot = self.index - capacity_for_segment_count(first_segment);
+                let last_slot = self.count - capacity_for_segment_count(first_segment);
+                if first_slot < last_slot {
+                    let len = last_slot - first_slot;
+                    unsafe {
+                        let first: *mut T =
+                            self.segments[first_segment].offset(first_slot as isize);
+                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
+                    }
+                }
+            } else {
+                let first_slot = self.index - capacity_for_segment_count(first_segment);
+                let segment_len = slots_in_segment(first_segment);
+                if segment_len < self.count {
+                    unsafe {
+                        let first: *mut T =
+                            self.segments[first_segment].offset(first_slot as isize);
+                        let len = segment_len - first_slot;
+                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
+                    }
+                }
+
+                // drop the values in the last segment
+                let last_slot = self.count - capacity_for_segment_count(last_segment);
+                unsafe {
+                    std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                        self.segments[last_segment],
+                        last_slot,
+                    ));
+                }
+
+                // now drop the values in all of the other segments
+                if last_segment > first_segment {
+                    for segment in first_segment + 1..last_segment {
+                        let segment_len = slots_in_segment(segment);
+                        unsafe {
+                            std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                                self.segments[segment],
+                                segment_len,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // deallocate the segments themselves and clear everything
+        for segment in 0..self.used_segments {
+            if !self.segments[segment].is_null() {
+                let segment_len = slots_in_segment(segment);
+                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
+                unsafe {
+                    dealloc(self.segments[segment] as *mut u8, layout);
+                }
+                self.segments[segment] = std::ptr::null_mut();
+            }
+        }
+        self.index = 0;
+        self.count = 0;
+        self.used_segments = 0;
     }
 }
 
 impl<T> IntoIterator for SegmentedArray<T> {
     type Item = T;
-    type IntoIter = SegmentedArrayIntoIter<Self::Item>;
+    type IntoIter = SegArrayIntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SegmentedArrayIntoIter {
-            array: self,
+        let me = std::mem::ManuallyDrop::new(self);
+        SegArrayIntoIter {
             index: 0,
+            count: me.count,
+            used_segments: me.used_segments,
+            segments: me.segments,
         }
     }
 }
 
 impl<T> Drop for SegmentedArray<T> {
     fn drop(&mut self) {
+        // perform the drop_in_place() for all of the values
+        self.clear();
+        // deallocate the segments themselves and clear everything
         for segment in 0..self.used_segments {
-            let segment_len = slots_in_segment(segment);
-            unsafe {
+            if !self.segments[segment].is_null() {
+                let segment_len = slots_in_segment(segment);
                 let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
-                dealloc(self.segments[segment] as *mut u8, layout);
+                unsafe {
+                    dealloc(self.segments[segment] as *mut u8, layout);
+                }
+                self.segments[segment] = std::ptr::null_mut();
             }
         }
+        self.used_segments = 0;
     }
 }
 
@@ -339,8 +462,10 @@ mod tests {
         let item = String::from("hello world");
         let mut sut: SegmentedArray<String> = SegmentedArray::new();
         assert_eq!(sut.len(), 0);
+        assert!(sut.is_empty());
         sut.push(item);
         assert_eq!(sut.len(), 1);
+        assert!(!sut.is_empty());
         let maybe = sut.get(0);
         assert!(maybe.is_some());
         let actual = maybe.unwrap();
@@ -368,6 +493,32 @@ mod tests {
         let maybe = sut.get(10);
         assert!(maybe.is_none());
         assert_eq!(sut[3], "four");
+    }
+
+    #[test]
+    fn test_push_and_pop() {
+        let inputs = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        ];
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        assert!(sut.pop().is_none());
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        assert_eq!(sut.len(), 9);
+        for (idx, elem) in sut.iter().enumerate() {
+            assert_eq!(inputs[idx], elem);
+        }
+        let maybe = sut.pop();
+        assert!(maybe.is_some());
+        let value = maybe.unwrap();
+        assert_eq!(value, "nine");
+        assert_eq!(sut.len(), 8);
+        sut.push(String::from("nine"));
+        assert_eq!(sut.len(), 9);
+        for (idx, elem) in sut.iter().enumerate() {
+            assert_eq!(inputs[idx], elem);
+        }
     }
 
     #[test]
@@ -410,6 +561,64 @@ mod tests {
     }
 
     #[test]
+    fn test_clear_and_reuse_tiny() {
+        // clear an array that allocated only one segment
+        let inputs = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        ];
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        assert_eq!(sut.len(), 9);
+        sut.clear();
+        assert_eq!(sut.len(), 0);
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        assert_eq!(sut.len(), 9);
+        // implicitly drop()
+    }
+
+    #[test]
+    fn test_clear_and_reuse_ints() {
+        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        for value in 0..512 {
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 512);
+        sut.clear();
+        assert_eq!(sut.len(), 0);
+        for value in 0..512 {
+            sut.push(value);
+        }
+        for idx in 0..512 {
+            let maybe = sut.get(idx);
+            assert!(maybe.is_some(), "{idx} is none");
+            let actual = maybe.unwrap();
+            assert_eq!(idx, *actual as usize);
+        }
+    }
+
+    #[test]
+    fn test_clear_and_reuse_strings() {
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for _ in 0..512 {
+            let value = ulid::Ulid::new().to_string();
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 512);
+        sut.clear();
+        assert_eq!(sut.len(), 0);
+        for _ in 0..512 {
+            let value = ulid::Ulid::new().to_string();
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 512);
+        // implicitly drop()
+    }
+
+    #[test]
     fn test_add_get_many_ints() {
         let mut sut: SegmentedArray<i32> = SegmentedArray::new();
         for value in 0..1_000_000 {
@@ -441,6 +650,7 @@ mod tests {
 
     #[test]
     fn test_array_intoiterator() {
+        // an array that only requires a single segment
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
@@ -452,6 +662,43 @@ mod tests {
             assert_eq!(inputs[idx], elem);
         }
         // sut.len(); // error: ownership of sut was moved
+    }
+
+    #[test]
+    fn test_array_intoiterator_drop_tiny() {
+        // an array that only requires a single segment and only some need to be
+        // dropped after partially iterating the values
+        let inputs = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        ];
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        for (idx, _) in sut.into_iter().enumerate() {
+            if idx > 2 {
+                break;
+            }
+        }
+        // implicitly drop()
+    }
+
+    #[test]
+    fn test_array_intoiterator_drop_large() {
+        // by adding 512 values and iterating less than 64 times, there will be
+        // values in the first segment and some in the last segment, and two
+        // segments inbetween that all need to be dropped
+        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        for _ in 0..512 {
+            let value = ulid::Ulid::new().to_string();
+            sut.push(value);
+        }
+        for (idx, _) in sut.into_iter().enumerate() {
+            if idx >= 30 {
+                break;
+            }
+        }
+        // implicitly drop()
     }
 
     #[test]

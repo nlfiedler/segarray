@@ -1,6 +1,6 @@
 # Segmented Array
 
-This crate contains an implmentation of a segmented array, as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
+This crate contains an implementation of a segmented array (also known as a segmented list), as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
 
 > A data structure with constant time indexing, stable pointers, and works well
 > with arena allocators. ... The idea is straight forward: the structure
@@ -11,9 +11,11 @@ This crate contains an implmentation of a segmented array, as described in this 
 > "holes" of abandoned memory in arena allocators. The layout also allows us to
 > access any index in constant time.
 
-In terms of this Rust implementation, rather than stable "pointers", the references returned from `SegmentedArray::get()` will be stable. The behavior, memory layout, and performance of this implementation should be identical to that of the C implementation.
+In terms of this Rust implementation, rather than stable "pointers", the references returned from `SegmentedArray::get()` will be stable. The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
 
 This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
+
+In theory the segmented array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The benefit of a segmented array may only be that it does not leave "holes" of abandoned memory in arena allocators.
 
 ## Requirements
 
@@ -45,4 +47,33 @@ value: 01K2AZGB3T6156T5CQB7VX5JR9
 value: 01K2AZGB44DE1BGZGPY29FAC8H
 value: 01K2AZGB45DHV2QA8EGSMKWHH4
 value: 01K2AZGB42REB9DZCAJPS0G0SA
+```
+
+### Simple Example
+
+A simple example copied from the unit tests.
+
+```rust
+let inputs = [
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+];
+let mut arr: SegmentedArray<String> = SegmentedArray::new();
+for item in inputs {
+    arr.push(item.to_owned());
+}
+for (idx, elem) in arr.iter().enumerate() {
+    assert_eq!(inputs[idx], elem);
+}
+```
+
+## Troubleshooting
+
+### Memory Leaks
+
+Finding memory leaks with [Address Sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) is fairly easy and seems to work best on Linux. The shell script below gives a quick demonstration of running one of the examples with ASAN analysis enabled.
+
+```shell
+#!/bin/sh
+env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
+    cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --example many_ulids
 ```

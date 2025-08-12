@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2023 Nathan Fiedler
+// Copyright (c) 2025 Nathan Fiedler
 //
 use rand::prelude::*;
 use segarray::SegmentedArray;

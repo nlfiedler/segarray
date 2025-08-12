@@ -5,6 +5,6 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 This file follows the convention described at
 [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
-## [0.1.0] - 2025-08-10
+## [1.0.0] - 2025-08-11
 ### Changed
 - Initial release

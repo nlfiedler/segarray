@@ -1,9 +1,9 @@
 [package]
 name = "segarray"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 authors = ["Nathan Fiedler <nathanfiedler@fastmail.fm>"]
-description = "FastCDC (content defined chunking) in pure Rust."
+description = "Segmented array (growable, append-only) data structure."
 repository = "https://github.com/nlfiedler/segarray"
 readme = "README.md"
 keywords = ["collections", "segmented", "arrays"]
