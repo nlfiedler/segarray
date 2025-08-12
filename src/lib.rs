@@ -519,6 +519,19 @@ mod tests {
         for (idx, elem) in sut.iter().enumerate() {
             assert_eq!(inputs[idx], elem);
         }
+
+        // pop everything and add back again
+        while sut.len() > 0 {
+            sut.pop();
+        }
+        assert_eq!(sut.len(), 0);
+        for item in inputs {
+            sut.push(item.to_owned());
+        }
+        assert_eq!(sut.len(), 9);
+        for (idx, elem) in sut.iter().enumerate() {
+            assert_eq!(inputs[idx], elem);
+        }
     }
 
     #[test]
