@@ -2,16 +2,15 @@
 // Copyright (c) 2025 Nathan Fiedler
 //
 use rand::prelude::*;
-use segmented_array::SegmentedArray;
+use segment_array::SegmentArray;
 
 //
 // Basically useless except that it can be tested with a memory analyzer to
-// determine if the segmented array is leaking memory. By storing `String`
-// instead of numbers, this is slightly more interesting in terms of memory
-// management.
+// determine if the segment array is leaking memory. By storing `String` instead
+// of numbers, this is slightly more interesting in terms of memory management.
 //
 fn main() {
-    let mut array: SegmentedArray<String> = SegmentedArray::new();
+    let mut array: SegmentArray<String> = SegmentArray::new();
     // add a lot of values
     for _ in 0..10_000 {
         let value = ulid::Ulid::new().to_string();

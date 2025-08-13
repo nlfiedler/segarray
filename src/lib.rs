@@ -19,7 +19,7 @@
 //! > time.
 //!
 //! In terms of this Rust implementation, rather than stable "pointers", the
-//! references returned from [`SegmentedArray::get()`] will be stable. The
+//! references returned from [`SegmentArray::get()`] will be stable. The
 //! behavior, memory layout, and performance of this implementation should be
 //! identical to that of the C implementation. To summarize:
 //!
@@ -70,14 +70,14 @@ fn capacity_for_segment_count(segment: usize) -> usize {
 /// to avoid the allocate-and-copy that many growable data structures typically
 /// employ.
 ///
-pub struct SegmentedArray<T> {
+pub struct SegmentArray<T> {
     count: usize,
     used_segments: usize,
     segments: [*mut T; MAX_SEGMENT_COUNT],
 }
 
-impl<T> SegmentedArray<T> {
-    /// Return an empty segmented array with zero capacity.
+impl<T> SegmentArray<T> {
+    /// Return an empty segment array with zero capacity.
     ///
     /// Note that pre-allocating capacity has no benefit with this data
     /// structure since append operations are always constant time.
@@ -185,7 +185,7 @@ impl<T> SegmentedArray<T> {
         self.count as usize
     }
 
-    /// Returns the total number of elements the segmented array can hold
+    /// Returns the total number of elements the segment array can hold
     /// without reallocating.
     ///
     /// # Time complexity
@@ -266,7 +266,7 @@ impl<T> SegmentedArray<T> {
         }
     }
 
-    /// Returns an iterator over the segmented array.
+    /// Returns an iterator over the segment array.
     ///
     /// The iterator yields all items from start to end.
     pub fn iter(&self) -> SegArrayIter<'_, T> {
@@ -276,10 +276,10 @@ impl<T> SegmentedArray<T> {
         }
     }
 
-    /// Clears the segmented array, removing all values.
+    /// Clears the segment array, removing all values.
     ///
     /// Note that this method has no effect on the allocated capacity of the
-    /// segmented array.
+    /// segment array.
     pub fn clear(&mut self) {
         if self.count > 0 {
             if std::mem::needs_drop::<T>() {
@@ -308,7 +308,7 @@ impl<T> SegmentedArray<T> {
     }
 }
 
-impl<T> Index<usize> for SegmentedArray<T> {
+impl<T> Index<usize> for SegmentArray<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -319,7 +319,7 @@ impl<T> Index<usize> for SegmentedArray<T> {
     }
 }
 
-impl<T> IndexMut<usize> for SegmentedArray<T> {
+impl<T> IndexMut<usize> for SegmentArray<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let Some(item) = self.get_mut(index) else {
             panic!("index out ouf bounds: {}", index);
@@ -328,9 +328,9 @@ impl<T> IndexMut<usize> for SegmentedArray<T> {
     }
 }
 
-impl<A> FromIterator<A> for SegmentedArray<A> {
+impl<A> FromIterator<A> for SegmentArray<A> {
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
-        let mut arr: SegmentedArray<A> = SegmentedArray::new();
+        let mut arr: SegmentArray<A> = SegmentArray::new();
         for value in iter {
             arr.push(value)
         }
@@ -338,9 +338,9 @@ impl<A> FromIterator<A> for SegmentedArray<A> {
     }
 }
 
-/// Immutable segmented array iterator.
+/// Immutable segment array iterator.
 pub struct SegArrayIter<'a, T> {
-    array: &'a SegmentedArray<T>,
+    array: &'a SegmentArray<T>,
     index: usize,
 }
 
@@ -354,7 +354,7 @@ impl<'a, T> Iterator for SegArrayIter<'a, T> {
     }
 }
 
-/// An iterator that moves out of a segmented array.
+/// An iterator that moves out of a segment array.
 pub struct SegArrayIntoIter<T> {
     index: usize,
     count: usize,
@@ -447,7 +447,7 @@ impl<T> Drop for SegArrayIntoIter<T> {
     }
 }
 
-impl<T> IntoIterator for SegmentedArray<T> {
+impl<T> IntoIterator for SegmentArray<T> {
     type Item = T;
     type IntoIter = SegArrayIntoIter<Self::Item>;
 
@@ -462,7 +462,7 @@ impl<T> IntoIterator for SegmentedArray<T> {
     }
 }
 
-impl<T> Drop for SegmentedArray<T> {
+impl<T> Drop for SegmentArray<T> {
     fn drop(&mut self) {
         // perform the drop_in_place() for all of the values
         self.clear();
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn test_push_within_capacity() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         assert_eq!(sut.push_within_capacity(101), Err(101));
         sut.push(10);
         assert_eq!(sut.push_within_capacity(101), Ok(()));
@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn test_add_get_one_item() {
         let item = String::from("hello world");
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         assert_eq!(sut.len(), 0);
         assert!(sut.is_empty());
         sut.push(item);
@@ -549,7 +549,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_get_mut_index_mut() {
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         sut.push(String::from("first"));
         sut.push(String::from("second"));
         sut.push(String::from("third"));
@@ -584,7 +584,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "index out ouf bounds:")]
     fn test_index_out_of_bounds() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         sut.push(10);
         sut.push(20);
         let _ = sut[2];
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "index out ouf bounds:")]
     fn test_index_mut_out_of_bounds() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         sut.push(10);
         sut.push(20);
         sut[2] = 30;
@@ -604,7 +604,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         assert!(sut.pop().is_none());
         for item in inputs {
             sut.push(item.to_owned());
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn test_pop_if() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         assert!(sut.pop_if(|_| panic!("should not be called")).is_none());
         for value in 0..10 {
             sut.push(value);
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn test_swap_remove_single_segment() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         for value in 0..10 {
             sut.push(value);
         }
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn test_swap_remove_multiple_segments() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         for value in 0..512 {
             sut.push(value);
         }
@@ -680,14 +680,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "swap_remove index (is 0) should be < len (is 0)")]
     fn test_swap_remove_panic_empty() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         sut.swap_remove(0);
     }
 
     #[test]
     #[should_panic(expected = "swap_remove index (is 1) should be < len (is 1)")]
     fn test_swap_remove_panic_range_edge() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         sut.push(1);
         sut.swap_remove(1);
     }
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "swap_remove index (is 2) should be < len (is 1)")]
     fn test_swap_remove_panic_range_exceed() {
-        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
         sut.push(1);
         sut.swap_remove(2);
     }
@@ -706,7 +706,7 @@ mod tests {
             a: u64,
             b: i32,
         }
-        let mut sut: SegmentedArray<MyData> = SegmentedArray::new();
+        let mut sut: SegmentArray<MyData> = SegmentArray::new();
         for value in 0..88_888i32 {
             sut.push(MyData {
                 a: value as u64,
@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn test_add_get_hundred_ints() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         for value in 0..100 {
             sut.push(value);
         }
@@ -741,7 +741,7 @@ mod tests {
 
     #[test]
     fn test_len_and_capacity() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         assert_eq!(sut.len(), 0);
         assert_eq!(sut.capacity(), 0);
         for value in 0..100 {
@@ -757,7 +757,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -773,7 +773,7 @@ mod tests {
 
     #[test]
     fn test_clear_and_reuse_ints() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         for value in 0..512 {
             sut.push(value);
         }
@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_clear_and_reuse_strings() {
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for _ in 0..512 {
             let value = ulid::Ulid::new().to_string();
             sut.push(value);
@@ -811,7 +811,7 @@ mod tests {
 
     #[test]
     fn test_add_get_many_ints() {
-        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        let mut sut: SegmentArray<i32> = SegmentArray::new();
         for value in 0..1_000_000 {
             sut.push(value);
         }
@@ -830,7 +830,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -845,7 +845,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -862,7 +862,7 @@ mod tests {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -879,7 +879,7 @@ mod tests {
         // by adding 512 values and iterating less than 64 times, there will be
         // values in the first segment and some in the last segment, and two
         // segments inbetween that all need to be dropped
-        let mut sut: SegmentedArray<String> = SegmentedArray::new();
+        let mut sut: SegmentArray<String> = SegmentArray::new();
         for _ in 0..512 {
             let value = ulid::Ulid::new().to_string();
             sut.push(value);
@@ -898,7 +898,7 @@ mod tests {
         for value in 0..10_000 {
             inputs.push(value);
         }
-        let sut: SegmentedArray<i32> = inputs.into_iter().collect();
+        let sut: SegmentArray<i32> = inputs.into_iter().collect();
         assert_eq!(sut.len(), 10_000);
         for idx in 0..10_000i32 {
             let maybe = sut.get(idx as usize);
@@ -912,7 +912,7 @@ mod tests {
     fn test_add_get_many_instances() {
         // test allocating, filling, and then dropping many instances
         for _ in 0..1_000 {
-            let mut sut: SegmentedArray<usize> = SegmentedArray::new();
+            let mut sut: SegmentArray<usize> = SegmentArray::new();
             for value in 0..10_000 {
                 sut.push(value);
             }

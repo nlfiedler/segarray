@@ -1,17 +1,17 @@
 //
 // Copyright (c) 2025 Nathan Fiedler
 //
-use segmented_array::SegmentedArray;
+use segment_array::SegmentArray;
 use std::time::Instant;
 
 //
-// This example intends to show that a segmented array will grow in less time
-// than a vector, however in practice that may not be the case.
+// This example intends to show that a segment array will grow in less time than
+// a vector, however in practice that may not be the case.
 //
 
 fn create_segarray(size: u64) {
     let start = Instant::now();
-    let mut coll: SegmentedArray<u64> = SegmentedArray::new();
+    let mut coll: SegmentArray<u64> = SegmentArray::new();
     for value in 0..size {
         coll.push(value);
     }

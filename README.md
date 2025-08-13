@@ -1,6 +1,6 @@
-# Segmented Array
+# Segment Array
 
-This crate contains an implementation of a segmented array (also known as a segmented list), as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
+This crate contains an implementation of a segment array (also known as a segmented list), as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
 
 > A data structure with constant time indexing, stable pointers, and works well
 > with arena allocators. ... The idea is straight forward: the structure
@@ -11,11 +11,11 @@ This crate contains an implementation of a segmented array (also known as a segm
 > "holes" of abandoned memory in arena allocators. The layout also allows us to
 > access any index in constant time.
 
-In terms of this Rust implementation, rather than stable "pointers", the references returned from `SegmentedArray::get()` will be stable. The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
+In terms of this Rust implementation, rather than stable "pointers", the references returned from `SegmentArray::get()` will be stable. The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
 
 This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
 
-In theory the segmented array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The benefit of a segmented array may only be that it does not leave "holes" of abandoned memory in arena allocators.
+In theory the segment array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The benefit of a segment array may only be that it does not leave "holes" of abandoned memory in arena allocators.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ A simple example copied from the unit tests.
 let inputs = [
     "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
 ];
-let mut arr: SegmentedArray<String> = SegmentedArray::new();
+let mut arr: SegmentArray<String> = SegmentArray::new();
 for item in inputs {
     arr.push(item.to_owned());
 }
