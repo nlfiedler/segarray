@@ -26,7 +26,7 @@
 //! * Fixed number of segments (26)
 //! * First segment has a capacity of 64
 //! * Each segment is double the size of the previous one
-//! * The total capacity if 4,294,967,232 items
+//! * Total capacity of 4,294,967,232 items
 //!
 //! This data structure is meant to hold an unknown, though likely large, number
 //! of elements, otherwise `Vec` would be more appropriate. An empty array will
@@ -67,7 +67,8 @@ fn capacity_for_segment_count(segment: usize) -> usize {
 
 ///
 /// Append-only growable array that uses a list of progressivly larger segments
-/// to avoid the allocate-and-copy that typical growable data structures employ.
+/// to avoid the allocate-and-copy that many growable data structures typically
+/// employ.
 ///
 pub struct SegmentedArray<T> {
     count: usize,
@@ -120,14 +121,31 @@ impl<T> SegmentedArray<T> {
         let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
         let slot = (self.count - capacity_for_segment_count(segment)) as isize;
         unsafe {
-            let end: *mut T = self.segments[segment].offset(slot);
-            std::ptr::write(end, value);
+            std::ptr::write(self.segments[segment].offset(slot), value);
         }
         self.count += 1;
     }
 
+    /// Appends an element if there is sufficient spare capacity, otherwise an
+    /// error is returned with the element.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
+    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+        if self.count >= capacity_for_segment_count(self.used_segments) {
+            Err(value)
+        } else {
+            Ok(self.push(value))
+        }
+    }
+
     /// Removes the last element from a vector and returns it, or `None` if it
     /// is empty.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
     pub fn pop(&mut self) -> Option<T> {
         if self.count > 0 {
             self.count -= 1;
@@ -136,6 +154,25 @@ impl<T> SegmentedArray<T> {
             unsafe { Some((self.segments[segment].offset(slot)).read()) }
         } else {
             None
+        }
+    }
+
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns true, or None if the predicate returns false or the vector is
+    /// empty (the predicate will not be called in that case).
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
+    pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        if self.count == 0 {
+            None
+        } else {
+            if let Some(last) = self.get_mut(self.count - 1) {
+                if predicate(last) { self.pop() } else { None }
+            } else {
+                None
+            }
         }
     }
 
@@ -148,7 +185,21 @@ impl<T> SegmentedArray<T> {
         self.count as usize
     }
 
+    /// Returns the total number of elements the segmented array can hold
+    /// without reallocating.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
+    pub fn capacity(&self) -> usize {
+        capacity_for_segment_count(self.used_segments)
+    }
+
     /// Returns true if the array has a length of 0.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
@@ -169,6 +220,10 @@ impl<T> SegmentedArray<T> {
     }
 
     /// Returns a mutable reference to an element.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
     pub fn get_mut(&self, index: usize) -> Option<&mut T> {
         if index >= self.count {
             None
@@ -176,6 +231,38 @@ impl<T> SegmentedArray<T> {
             let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let slot = (index - capacity_for_segment_count(segment)) as isize;
             unsafe { (self.segments[segment].offset(slot)).as_mut() }
+        }
+    }
+
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.
+    ///
+    /// This does not preserve ordering of the remaining elements.
+    ///
+    /// # Time complexity
+    ///
+    /// Constant time.
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        if index >= self.count {
+            panic!(
+                "swap_remove index (is {index}) should be < len (is {})",
+                self.count
+            );
+        }
+        // retreive the value at index before overwriting
+        let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+        let slot = (index - capacity_for_segment_count(segment)) as isize;
+        unsafe {
+            let index_ptr = self.segments[segment].offset(slot);
+            let value = index_ptr.read();
+            // find the pointer of the last element and copy to index pointer
+            self.count -= 1;
+            let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+            let slot = (self.count - capacity_for_segment_count(segment)) as isize;
+            let last_ptr = self.segments[segment].offset(slot);
+            std::ptr::copy(last_ptr, index_ptr, 1);
+            value
         }
     }
 
@@ -297,25 +384,25 @@ impl<T> Drop for SegArrayIntoIter<T> {
             let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             if first_segment == last_segment {
                 // special-case, remaining values are in only one segment
-                let first_slot = self.index - capacity_for_segment_count(first_segment);
-                let last_slot = self.count - capacity_for_segment_count(first_segment);
-                if first_slot < last_slot {
-                    let len = last_slot - first_slot;
+                let first = self.index - capacity_for_segment_count(first_segment);
+                let last = self.count - capacity_for_segment_count(first_segment);
+                if first < last {
+                    let len = last - first;
                     unsafe {
-                        let first: *mut T =
-                            self.segments[first_segment].offset(first_slot as isize);
+                        let first: *mut T = self.segments[first_segment].offset(first as isize);
                         std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
                     }
                 }
             } else {
-                let first_slot = self.index - capacity_for_segment_count(first_segment);
+                // drop values in the first segment that still has values to be
+                // visited
+                let first = self.index - capacity_for_segment_count(first_segment);
                 let segment_len = slots_in_segment(first_segment);
                 if segment_len < self.count {
                     unsafe {
-                        let first: *mut T =
-                            self.segments[first_segment].offset(first_slot as isize);
-                        let len = segment_len - first_slot;
-                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
+                        let ptr: *mut T = self.segments[first_segment].offset(first as isize);
+                        let len = segment_len - first;
+                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(ptr, len));
                     }
                 }
 
@@ -433,6 +520,14 @@ mod tests {
     }
 
     #[test]
+    fn test_push_within_capacity() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        assert_eq!(sut.push_within_capacity(101), Err(101));
+        sut.push(10);
+        assert_eq!(sut.push_within_capacity(101), Ok(()));
+    }
+
+    #[test]
     fn test_add_get_one_item() {
         let item = String::from("hello world");
         let mut sut: SegmentedArray<String> = SegmentedArray::new();
@@ -544,6 +639,68 @@ mod tests {
     }
 
     #[test]
+    fn test_pop_if() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        assert!(sut.pop_if(|_| panic!("should not be called")).is_none());
+        for value in 0..10 {
+            sut.push(value);
+        }
+        assert!(sut.pop_if(|_| false).is_none());
+        let maybe = sut.pop_if(|v| *v == 9);
+        assert_eq!(maybe.unwrap(), 9);
+        assert!(sut.pop_if(|v| *v == 9).is_none());
+    }
+
+    #[test]
+    fn test_swap_remove_single_segment() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        for value in 0..10 {
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 10);
+        let five = sut.swap_remove(5);
+        assert_eq!(five, 5);
+        assert_eq!(sut.pop(), Some(8));
+        assert_eq!(sut[5], 9);
+    }
+
+    #[test]
+    fn test_swap_remove_multiple_segments() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        for value in 0..512 {
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 512);
+        let eighty = sut.swap_remove(80);
+        assert_eq!(eighty, 80);
+        assert_eq!(sut.pop(), Some(510));
+        assert_eq!(sut[80], 511);
+    }
+
+    #[test]
+    #[should_panic(expected = "swap_remove index (is 0) should be < len (is 0)")]
+    fn test_swap_remove_panic_empty() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        sut.swap_remove(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "swap_remove index (is 1) should be < len (is 1)")]
+    fn test_swap_remove_panic_range_edge() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        sut.push(1);
+        sut.swap_remove(1);
+    }
+
+    #[test]
+    #[should_panic(expected = "swap_remove index (is 2) should be < len (is 1)")]
+    fn test_swap_remove_panic_range_exceed() {
+        let mut sut: SegmentedArray<u32> = SegmentedArray::new();
+        sut.push(1);
+        sut.swap_remove(2);
+    }
+
+    #[test]
     fn test_add_get_thousands_structs() {
         struct MyData {
             a: u64,
@@ -580,6 +737,18 @@ mod tests {
             assert_eq!(idx, *actual as usize);
         }
         assert_eq!(sut[99], 99);
+    }
+
+    #[test]
+    fn test_len_and_capacity() {
+        let mut sut: SegmentedArray<i32> = SegmentedArray::new();
+        assert_eq!(sut.len(), 0);
+        assert_eq!(sut.capacity(), 0);
+        for value in 0..100 {
+            sut.push(value);
+        }
+        assert_eq!(sut.len(), 100);
+        assert_eq!(sut.capacity(), 192);
     }
 
     #[test]

@@ -6,37 +6,30 @@ use std::time::Instant;
 
 //
 // This example intends to show that a segmented array will grow in less time
-// than a vector, however in practice they are about the same.
+// than a vector, however in practice that may not be the case.
 //
 
-fn create_segarray(size: usize) -> SegmentedArray<String> {
-    let mut coll: SegmentedArray<String> = SegmentedArray::new();
-    for _ in 0..size {
-        let value = ulid::Ulid::new().to_string();
+fn create_segarray(size: u64) {
+    let start = Instant::now();
+    let mut coll: SegmentedArray<u64> = SegmentedArray::new();
+    for value in 0..size {
         coll.push(value);
     }
-    coll
+    let duration = start.elapsed();
+    println!("segarray: {:?}", duration);
 }
 
-fn create_vector(size: usize) -> Vec<String> {
-    let mut coll: Vec<String> = Vec::new();
-    for _ in 0..size {
-        let value = ulid::Ulid::new().to_string();
+fn create_vector(size: u64) {
+    let start = Instant::now();
+    let mut coll: Vec<u64> = Vec::new();
+    for value in 0..size {
         coll.push(value);
     }
-    coll
+    let duration = start.elapsed();
+    println!("vector: {:?}", duration);
 }
 
 fn main() {
-    let start = Instant::now();
-    let coll = create_vector(10_000_000);
-    let duration = start.elapsed();
-    assert_eq!(coll.len(), 10_000_000);
-    println!("vector: {:?}", duration);
-
-    let start = Instant::now();
-    let coll = create_segarray(10_000_000);
-    let duration = start.elapsed();
-    assert_eq!(coll.len(), 10_000_000);
-    println!("segarray: {:?}", duration);
+    create_segarray(1_000_000_000);
+    create_vector(1_000_000_000);
 }
