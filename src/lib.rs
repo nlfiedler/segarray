@@ -85,7 +85,7 @@ impl<T> SegmentArray<T> {
         Self {
             count: 0,
             used_segments: 0,
-            segments: [0 as *mut T; MAX_SEGMENT_COUNT],
+            segments: [std::ptr::null_mut::<T>(); MAX_SEGMENT_COUNT],
         }
     }
 
@@ -136,7 +136,8 @@ impl<T> SegmentArray<T> {
         if self.count >= capacity_for_segment_count(self.used_segments) {
             Err(value)
         } else {
-            Ok(self.push(value))
+            self.push(value);
+            Ok(())
         }
     }
 
@@ -167,12 +168,10 @@ impl<T> SegmentArray<T> {
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         if self.count == 0 {
             None
+        } else if let Some(last) = self.get_mut(self.count - 1) {
+            if predicate(last) { self.pop() } else { None }
         } else {
-            if let Some(last) = self.get_mut(self.count - 1) {
-                if predicate(last) { self.pop() } else { None }
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -182,7 +181,7 @@ impl<T> SegmentArray<T> {
     ///
     /// Constant time.
     pub fn len(&self) -> usize {
-        self.count as usize
+        self.count
     }
 
     /// Returns the total number of elements the segment array can hold
@@ -224,7 +223,7 @@ impl<T> SegmentArray<T> {
     /// # Time complexity
     ///
     /// Constant time.
-    pub fn get_mut(&self, index: usize) -> Option<&mut T> {
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         if index >= self.count {
             None
         } else {
@@ -305,6 +304,12 @@ impl<T> SegmentArray<T> {
             }
             self.count = 0;
         }
+    }
+}
+
+impl<T> Default for SegmentArray<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -389,7 +394,7 @@ impl<T> Drop for SegArrayIntoIter<T> {
                 if first < last {
                     let len = last - first;
                     unsafe {
-                        let first: *mut T = self.segments[first_segment].offset(first as isize);
+                        let first: *mut T = self.segments[first_segment].add(first);
                         std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
                     }
                 }
@@ -400,7 +405,7 @@ impl<T> Drop for SegArrayIntoIter<T> {
                 let segment_len = slots_in_segment(first_segment);
                 if segment_len < self.count {
                     unsafe {
-                        let ptr: *mut T = self.segments[first_segment].offset(first as isize);
+                        let ptr: *mut T = self.segments[first_segment].add(first);
                         let len = segment_len - first;
                         std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(ptr, len));
                     }
@@ -416,15 +421,13 @@ impl<T> Drop for SegArrayIntoIter<T> {
                 }
 
                 // now drop the values in all of the other segments
-                if last_segment > first_segment {
-                    for segment in first_segment + 1..last_segment {
-                        let segment_len = slots_in_segment(segment);
-                        unsafe {
-                            std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
-                                self.segments[segment],
-                                segment_len,
-                            ));
-                        }
+                for segment in first_segment + 1..last_segment {
+                    let segment_len = slots_in_segment(segment);
+                    unsafe {
+                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                            self.segments[segment],
+                            segment_len,
+                        ));
                     }
                 }
             }
@@ -495,8 +498,12 @@ mod tests {
             536870912, 1073741824, 2147483648, 4294967296,
         ];
         assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT + 1);
-        for segment in 0..=MAX_SEGMENT_COUNT {
-            assert_eq!(expected_values[segment], slots_in_segment(segment));
+        for (segment, item) in expected_values
+            .iter()
+            .enumerate()
+            .take(MAX_SEGMENT_COUNT + 1)
+        {
+            assert_eq!(*item, slots_in_segment(segment));
         }
     }
 
@@ -514,8 +521,12 @@ mod tests {
             536870848, 1073741760, 2147483584, 4294967232,
         ];
         assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT + 1);
-        for count in 0..=MAX_SEGMENT_COUNT {
-            assert_eq!(expected_values[count], capacity_for_segment_count(count));
+        for (count, item) in expected_values
+            .iter()
+            .enumerate()
+            .take(MAX_SEGMENT_COUNT + 1)
+        {
+            assert_eq!(*item, capacity_for_segment_count(count));
         }
     }
 
@@ -554,11 +565,11 @@ mod tests {
             sut.push(item.to_owned());
         }
         assert_eq!(sut.len(), 9);
-        for idx in 0..=8 {
+        for (idx, item) in inputs.iter().enumerate() {
             let maybe = sut.get(idx);
             assert!(maybe.is_some(), "{idx} is none");
             let actual = maybe.unwrap();
-            assert_eq!(inputs[idx], actual);
+            assert_eq!(item, actual);
         }
         let maybe = sut.get(10);
         assert!(maybe.is_none());
@@ -625,7 +636,7 @@ mod tests {
         }
 
         // pop everything and add back again
-        while sut.len() > 0 {
+        while !sut.is_empty() {
             sut.pop();
         }
         assert_eq!(sut.len(), 0);
@@ -904,7 +915,7 @@ mod tests {
             let maybe = sut.get(idx as usize);
             assert!(maybe.is_some(), "{idx} is none");
             let actual = maybe.unwrap();
-            assert_eq!(idx, *actual as i32);
+            assert_eq!(idx, *actual);
         }
     }
 
