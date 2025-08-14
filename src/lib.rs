@@ -18,14 +18,12 @@
 //! > allocators. The layout also allows us to access any index in constant
 //! > time.
 //!
-//! In terms of this Rust implementation, rather than stable "pointers", the
-//! references returned from [`SegmentArray::get()`] will be stable. The
-//! behavior, memory layout, and performance of this implementation should be
-//! identical to that of the C implementation. To summarize:
+//! The behavior, memory layout, and performance of this implementation should
+//! be identical to that of the C implementation. To summarize:
 //!
 //! * Fixed number of segments (26)
 //! * First segment has a capacity of 64
-//! * Each segment is double the size of the previous one
+//! * Each segment is double the size of its predecessor
 //! * Total capacity of 4,294,967,232 items
 //!
 //! This data structure is meant to hold an unknown, though likely large, number
@@ -119,9 +117,9 @@ impl<T> SegmentArray<T> {
         }
 
         let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-        let slot = (self.count - capacity_for_segment_count(segment)) as isize;
+        let slot = self.count - capacity_for_segment_count(segment);
         unsafe {
-            std::ptr::write(self.segments[segment].offset(slot), value);
+            std::ptr::write(self.segments[segment].add(slot), value);
         }
         self.count += 1;
     }
@@ -151,8 +149,8 @@ impl<T> SegmentArray<T> {
         if self.count > 0 {
             self.count -= 1;
             let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let slot = (self.count - capacity_for_segment_count(segment)) as isize;
-            unsafe { Some((self.segments[segment].offset(slot)).read()) }
+            let slot = self.count - capacity_for_segment_count(segment);
+            unsafe { Some((self.segments[segment].add(slot)).read()) }
         } else {
             None
         }
@@ -213,8 +211,8 @@ impl<T> SegmentArray<T> {
             None
         } else {
             let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let slot = (index - capacity_for_segment_count(segment)) as isize;
-            unsafe { (self.segments[segment].offset(slot)).as_ref() }
+            let slot = index - capacity_for_segment_count(segment);
+            unsafe { (self.segments[segment].add(slot)).as_ref() }
         }
     }
 
@@ -228,8 +226,8 @@ impl<T> SegmentArray<T> {
             None
         } else {
             let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let slot = (index - capacity_for_segment_count(segment)) as isize;
-            unsafe { (self.segments[segment].offset(slot)).as_mut() }
+            let slot = index - capacity_for_segment_count(segment);
+            unsafe { (self.segments[segment].add(slot)).as_mut() }
         }
     }
 
@@ -251,15 +249,15 @@ impl<T> SegmentArray<T> {
         }
         // retreive the value at index before overwriting
         let segment = ((index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-        let slot = (index - capacity_for_segment_count(segment)) as isize;
+        let slot = index - capacity_for_segment_count(segment);
         unsafe {
-            let index_ptr = self.segments[segment].offset(slot);
+            let index_ptr = self.segments[segment].add(slot);
             let value = index_ptr.read();
             // find the pointer of the last element and copy to index pointer
             self.count -= 1;
             let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let slot = (self.count - capacity_for_segment_count(segment)) as isize;
-            let last_ptr = self.segments[segment].offset(slot);
+            let slot = self.count - capacity_for_segment_count(segment);
+            let last_ptr = self.segments[segment].add(slot);
             std::ptr::copy(last_ptr, index_ptr, 1);
             value
         }
@@ -373,9 +371,9 @@ impl<T> Iterator for SegArrayIntoIter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.count {
             let segment = ((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let slot = (self.index - capacity_for_segment_count(segment)) as isize;
+            let slot = self.index - capacity_for_segment_count(segment);
             self.index += 1;
-            unsafe { Some((self.segments[segment].offset(slot)).read()) }
+            unsafe { Some((self.segments[segment].add(slot)).read()) }
         } else {
             None
         }
