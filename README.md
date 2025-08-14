@@ -11,11 +11,11 @@ This crate contains an implementation of a segment array (also known as a segmen
 > "holes" of abandoned memory in arena allocators. The layout also allows us to
 > access any index in constant time.
 
-In terms of this Rust implementation, rather than stable "pointers", the references returned from `SegmentArray::get()` will be stable. The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
+The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
+
+In theory the segment array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The overhead of the bit-shifts and logarithm operations required for every push operation seems to outweigh the amortized O(1) of the basic geometrically growing array. The benefit of a segment array may only be that it does not leave "holes" of abandoned memory in arena allocators.
 
 This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
-
-In theory the segment array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The benefit of a segment array may only be that it does not leave "holes" of abandoned memory in arena allocators.
 
 ## Requirements
 
@@ -82,3 +82,12 @@ env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
 
 * [rmeno12/segarray](https://github.com/rmeno12/segarray)
     + Similar to the Zig implementation
+
+## Academic Research
+
+Publications related to the _dynamic array problem_ in order of publication:
+
+* [Resizable Arrays in Optimal Time and Space (1999)](https://www.semanticscholar.org/paper/Resizable-Arrays-in-Optimal-Time-and-Space-Brodnik-Carlsson/7843ee3731560aa81514be409a9ffc42749af289)
+* [Experiences with the Design and Implementation of Space-Efficient Deques (2001)](https://www.semanticscholar.org/paper/Experiences-with-the-Design-and-Implementation-of-Katajainen-Mortensen/2346307bf5cc3b322ed38e6582cfb854723ebec5)
+* [Fast Dynamic Arrays (2017)](https://www.semanticscholar.org/paper/Fast-Dynamic-Arrays-Bille-Christiansen/4f01f5322ef6564d253039a3859ea20f858ac9ef)
+* [Immediate-Access Indexing Using Space-Efficient Extensible Arrays (2022)](https://www.semanticscholar.org/paper/Immediate-Access-Indexing-Using-Space-Efficient-Moffat/31e7dd2ee63efa92009035f4f04d9569ed3024c6)
