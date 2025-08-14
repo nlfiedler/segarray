@@ -1,7 +1,6 @@
 //
 // Copyright (c) 2025 Nathan Fiedler
 //
-use rand::prelude::*;
 use segment_array::SegmentArray;
 
 //
@@ -11,16 +10,34 @@ use segment_array::SegmentArray;
 //
 fn main() {
     let mut array: SegmentArray<String> = SegmentArray::new();
-    // add a lot of values
-    for _ in 0..10_000 {
+    // add enough values to allocate a bunch of segments
+    for _ in 0..13_000 {
         let value = ulid::Ulid::new().to_string();
         array.push(value);
     }
-    // randomly pick 10 entries and print them
-    let mut rng = rand::rng();
-    for _ in 0..10 {
-        let index = rng.random_range(0..10_000);
-        let value = array.get(index).unwrap();
-        println!("value: {value}");
+    // use an into iterator the to visit elements from each of the segments
+    for (index, value) in array.into_iter().skip(32).enumerate() {
+        if index == 32 {
+            println!("32: {value}");
+        } else if index == 128 {
+            println!("128: {value}");
+        } else if index == 336 {
+            println!("336: {value}");
+        } else if index == 768 {
+            println!("768: {value}");
+        } else if index == 1024 {
+            println!("1024: {value}");
+        } else if index == 1600 {
+            println!("1600: {value}");
+        } else if index == 3084 {
+            println!("3084: {value}");
+        } else if index == 6666 {
+            println!("6666: {value}");
+        } else if index == 10000 {
+            println!("10000: {value}");
+            break;
+        }
     }
+    // now the Drop implementation for the IntoIter will be invoked and the
+    // memory analyzer can catch even more issues
 }
