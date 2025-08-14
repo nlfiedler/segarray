@@ -87,7 +87,11 @@ env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
 
 Publications related to the _dynamic array problem_ in order of publication:
 
-* [Resizable Arrays in Optimal Time and Space (1999)](https://www.semanticscholar.org/paper/Resizable-Arrays-in-Optimal-Time-and-Space-Brodnik-Carlsson/7843ee3731560aa81514be409a9ffc42749af289)
-* [Experiences with the Design and Implementation of Space-Efficient Deques (2001)](https://www.semanticscholar.org/paper/Experiences-with-the-Design-and-Implementation-of-Katajainen-Mortensen/2346307bf5cc3b322ed38e6582cfb854723ebec5)
-* [Fast Dynamic Arrays (2017)](https://www.semanticscholar.org/paper/Fast-Dynamic-Arrays-Bille-Christiansen/4f01f5322ef6564d253039a3859ea20f858ac9ef)
-* [Immediate-Access Indexing Using Space-Efficient Extensible Arrays (2022)](https://www.semanticscholar.org/paper/Immediate-Access-Indexing-Using-Space-Efficient-Moffat/31e7dd2ee63efa92009035f4f04d9569ed3024c6)
+* \[1\]: [Resizable Arrays in Optimal Time and Space (1999)](https://www.semanticscholar.org/paper/Resizable-Arrays-in-Optimal-Time-and-Space-Brodnik-Carlsson/7843ee3731560aa81514be409a9ffc42749af289)
+    - Section 4 discusses the block sizing and segment/offset computation cost, similar to Segment Arrays.
+    - *Data Blocks* are slots and *Super Blocks* are segments.
+* \[2\]: [Experiences with the Design and Implementation of Space-Efficient Deques (2001)](https://www.semanticscholar.org/paper/Experiences-with-the-Design-and-Implementation-of-Katajainen-Mortensen/2346307bf5cc3b322ed38e6582cfb854723ebec5)
+* \[3\]: [Fast Dynamic Arrays (2017)](https://www.semanticscholar.org/paper/Fast-Dynamic-Arrays-Bille-Christiansen/4f01f5322ef6564d253039a3859ea20f858ac9ef)
+* \[4\]: [Immediate-Access Indexing Using Space-Efficient Extensible Arrays (2022)](https://www.semanticscholar.org/paper/Immediate-Access-Indexing-Using-Space-Efficient-Moffat/31e7dd2ee63efa92009035f4f04d9569ed3024c6)
+    - Segment Arrays are similar to the **SPACE-EFFICIENT EXTENSIBLE ARRAYS** described in this paper.
+    - Similar to **Singly Resizable Arrays** in [1] but doubles the number of slots and segments at the same time.
