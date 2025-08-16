@@ -9,10 +9,7 @@ readme = "README.md"
 keywords = ["collections", "segment-array", "data-structures"]
 categories = ["data-structures"]
 license = "MIT"
-exclude = [
-    "TODO.org",
-    "test/*",
-]
+exclude = ["TODO.org", "test/*"]
 
 [dev-dependencies]
 ulid = "1.2.1"

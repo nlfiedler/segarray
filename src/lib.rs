@@ -29,8 +29,15 @@
 //! This data structure is meant to hold an unknown, though likely large, number
 //! of elements, otherwise `Vec` would be more appropriate. An empty array will
 //! have a hefty size of around 224 bytes.
+//! 
+//! # Safety
+//! 
+//! Because this data structure is allocating memory, copying bytes using
+//! pointers, and de-allocated memory as needed, there are many `unsafe` blocks
+//! throughout the code.
 
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
+use std::fmt;
 use std::iter::{FromIterator, Iterator};
 use std::ops::{Index, IndexMut};
 
@@ -38,10 +45,11 @@ use std::ops::{Index, IndexMut};
 // An individual segment can never be larger than 9,223,372,036,854,775,807
 // bytes due to the mechanics of the Rust memory allocator.
 //
-// 26 segments with 6 skipped segments can hold 4,294,967,232 items
+// 26 segments with 6 skipped segments with each segment doubling in size
+// results in the last segment having 2,147,483,648 items
 //
-// 9,223,372,036,854,775,807 bytes divided by 4,294,967,232 items yields a
-// maximum item size of 2,147,483,680 bytes
+// 9,223,372,036,854,775,807 bytes divided by 2,147,483,648 items yields a
+// maximum item size of 4,294,967,296 bytes
 //
 const MAX_SEGMENT_COUNT: usize = 26;
 
@@ -69,8 +77,11 @@ fn capacity_for_segment_count(segment: usize) -> usize {
 /// employ.
 ///
 pub struct SegmentArray<T> {
+    // number of elements stored in the array
     count: usize,
+    // number of allocated segments
     used_segments: usize,
+    // pointers to allocated segments (0 to used_segments-1)
     segments: [*mut T; MAX_SEGMENT_COUNT],
 }
 
@@ -78,7 +89,8 @@ impl<T> SegmentArray<T> {
     /// Return an empty segment array with zero capacity.
     ///
     /// Note that pre-allocating capacity has no benefit with this data
-    /// structure since append operations are always constant time.
+    /// structure since append operations are always constant time and
+    /// no reallocation and copy is ever performed.
     pub fn new() -> Self {
         Self {
             count: 0,
@@ -311,6 +323,40 @@ impl<T> Default for SegmentArray<T> {
     }
 }
 
+impl<T> fmt::Display for SegmentArray<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let longest_segment = if self.used_segments > 0 {
+            slots_in_segment(self.used_segments - 1)
+        } else {
+            0
+        };
+        write!(
+            f,
+            "SegmentArray(count: {}, used_segments: {}, longest segment: {})",
+            self.count, self.used_segments, longest_segment
+        )
+    }
+}
+
+impl<T> Drop for SegmentArray<T> {
+    fn drop(&mut self) {
+        // perform the drop_in_place() for all of the values
+        self.clear();
+        // deallocate the segments themselves and clear everything
+        for segment in 0..self.used_segments {
+            if !self.segments[segment].is_null() {
+                let segment_len = slots_in_segment(segment);
+                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
+                unsafe {
+                    dealloc(self.segments[segment] as *mut u8, layout);
+                }
+                self.segments[segment] = std::ptr::null_mut();
+            }
+        }
+        self.used_segments = 0;
+    }
+}
+
 impl<T> Index<usize> for SegmentArray<T> {
     type Output = T;
 
@@ -463,25 +509,6 @@ impl<T> IntoIterator for SegmentArray<T> {
     }
 }
 
-impl<T> Drop for SegmentArray<T> {
-    fn drop(&mut self) {
-        // perform the drop_in_place() for all of the values
-        self.clear();
-        // deallocate the segments themselves and clear everything
-        for segment in 0..self.used_segments {
-            if !self.segments[segment].is_null() {
-                let segment_len = slots_in_segment(segment);
-                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
-                unsafe {
-                    dealloc(self.segments[segment] as *mut u8, layout);
-                }
-                self.segments[segment] = std::ptr::null_mut();
-            }
-        }
-        self.used_segments = 0;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,14 +520,10 @@ mod tests {
         let expected_values = [
             64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288,
             1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456,
-            536870912, 1073741824, 2147483648, 4294967296,
+            536870912, 1073741824, 2147483648,
         ];
-        assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT + 1);
-        for (segment, item) in expected_values
-            .iter()
-            .enumerate()
-            .take(MAX_SEGMENT_COUNT + 1)
-        {
+        assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT);
+        for (segment, item) in expected_values.iter().enumerate() {
             assert_eq!(*item, slots_in_segment(segment));
         }
     }
@@ -519,21 +542,26 @@ mod tests {
             536870848, 1073741760, 2147483584, 4294967232,
         ];
         assert_eq!(expected_values.len(), MAX_SEGMENT_COUNT + 1);
-        for (count, item) in expected_values
-            .iter()
-            .enumerate()
-            .take(MAX_SEGMENT_COUNT + 1)
-        {
+        for (count, item) in expected_values.iter().enumerate() {
             assert_eq!(*item, capacity_for_segment_count(count));
         }
     }
 
     #[test]
     fn test_push_within_capacity() {
+        // empty array has no allocated space
         let mut sut: SegmentArray<u32> = SegmentArray::new();
         assert_eq!(sut.push_within_capacity(101), Err(101));
         sut.push(10);
         assert_eq!(sut.push_within_capacity(101), Ok(()));
+
+        // edge case (first segment is 64 elements long)
+        let mut sut: SegmentArray<u32> = SegmentArray::new();
+        for value in 1..64 {
+            sut.push(value);
+        }
+        assert_eq!(sut.push_within_capacity(64), Ok(()));
+        assert_eq!(sut.push_within_capacity(65), Err(65));
     }
 
     #[test]

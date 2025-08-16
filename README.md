@@ -17,21 +17,24 @@ In theory the segment array expansion _should_ be faster than a `Vec`, but in pr
 
 This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
 
-## Requirements
+## Examples
 
-* [Rust](https://www.rust-lang.org) stable (2024 edition)
+A simple example copied from the unit tests.
 
-## Building and Testing
-
-```shell
-$ cargo clean
-$ cargo build
-$ cargo test
+```rust
+let inputs = [
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+];
+let mut arr: SegmentArray<String> = SegmentArray::new();
+for item in inputs {
+    arr.push(item.to_owned());
+}
+for (idx, elem) in arr.iter().enumerate() {
+    assert_eq!(inputs[idx], elem);
+}
 ```
 
-## Example Usage
-
-Examples can be found in the `examples` directory of the source repository.
+Additional examples can be found in the `examples` directory of the source repository.
 
 ```shell
 $ cargo run --example many_ulids
@@ -49,22 +52,9 @@ value: 01K2AZGB45DHV2QA8EGSMKWHH4
 value: 01K2AZGB42REB9DZCAJPS0G0SA
 ```
 
-### Simple Example
+## Supported Rust Versions
 
-A simple example copied from the unit tests.
-
-```rust
-let inputs = [
-    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-];
-let mut arr: SegmentArray<String> = SegmentArray::new();
-for item in inputs {
-    arr.push(item.to_owned());
-}
-for (idx, elem) in arr.iter().enumerate() {
-    assert_eq!(inputs[idx], elem);
-}
-```
+The Rust edition is set to `2024` and hence version `1.85.0` is the minimum supported version.
 
 ## Troubleshooting
 
