@@ -30,6 +30,8 @@ fn create_vector(size: u64) {
 }
 
 fn main() {
-    create_segarray(1_000_000_000);
-    create_vector(1_000_000_000);
+    println!("creating SegmentArray...");
+    create_segarray(100_000_000);
+    println!("creating Vec...");
+    create_vector(100_000_000);
 }

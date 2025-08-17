@@ -34,24 +34,6 @@ for (idx, elem) in arr.iter().enumerate() {
 }
 ```
 
-Additional examples can be found in the `examples` directory of the source repository.
-
-```shell
-$ cargo run --example many_ulids
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
-     Running `target/debug/examples/many_ulids`
-value: 01K2AZGB3S7CYBQNRMXHKFPMRG
-value: 01K2AZGB46SXSGD2VE77EV88A7
-value: 01K2AZGB495KQ2K58GM02MFAZ0
-value: 01K2AZGB45D385S5FQB3KM3D4J
-value: 01K2AZGB4584FDW5AC837FZMZX
-value: 01K2AZGB3RRGV9Y7AHZFDM0T98
-value: 01K2AZGB3T6156T5CQB7VX5JR9
-value: 01K2AZGB44DE1BGZGPY29FAC8H
-value: 01K2AZGB45DHV2QA8EGSMKWHH4
-value: 01K2AZGB42REB9DZCAJPS0G0SA
-```
-
 ## Supported Rust Versions
 
 The Rust edition is set to `2024` and hence version `1.85.0` is the minimum supported version.
@@ -60,12 +42,12 @@ The Rust edition is set to `2024` and hence version `1.85.0` is the minimum supp
 
 ### Memory Leaks
 
-Finding memory leaks with [Address Sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) is fairly easy and seems to work best on Linux. The shell script below gives a quick demonstration of running one of the examples with ASAN analysis enabled.
+Finding memory leaks with [Address Sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) is fairly [easy](https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html) and seems to work best on Linux. The shell script below gives a quick demonstration of running one of the examples with ASAN analysis enabled.
 
 ```shell
 #!/bin/sh
 env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
-    cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --example many_ulids
+    cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --example leak_test
 ```
 
 ## Other Implementations

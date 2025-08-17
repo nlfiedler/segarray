@@ -33,7 +33,7 @@
 //! # Safety
 //! 
 //! Because this data structure is allocating memory, copying bytes using
-//! pointers, and de-allocated memory as needed, there are many `unsafe` blocks
+//! pointers, and de-allocating memory as needed, there are many `unsafe` blocks
 //! throughout the code.
 
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
@@ -285,7 +285,7 @@ impl<T> SegmentArray<T> {
         }
     }
 
-    /// Clears the segment array, removing all values.
+    /// Clears the segment array, removing and dropping all values.
     ///
     /// Note that this method has no effect on the allocated capacity of the
     /// segment array.
@@ -362,7 +362,7 @@ impl<T> Index<usize> for SegmentArray<T> {
 
     fn index(&self, index: usize) -> &Self::Output {
         let Some(item) = self.get(index) else {
-            panic!("index out ouf bounds: {}", index);
+            panic!("index out of bounds: {}", index);
         };
         item
     }
@@ -371,7 +371,7 @@ impl<T> Index<usize> for SegmentArray<T> {
 impl<T> IndexMut<usize> for SegmentArray<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let Some(item) = self.get_mut(index) else {
-            panic!("index out ouf bounds: {}", index);
+            panic!("index out of bounds: {}", index);
         };
         item
     }
@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_one_item() {
+    fn test_push_get_one_item() {
         let item = String::from("hello world");
         let mut sut: SegmentArray<String> = SegmentArray::new();
         assert_eq!(sut.len(), 0);
@@ -582,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_several_strings() {
+    fn test_push_get_several_strings() {
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "index out ouf bounds:")]
+    #[should_panic(expected = "index out of bounds:")]
     fn test_index_out_of_bounds() {
         let mut sut: SegmentArray<i32> = SegmentArray::new();
         sut.push(10);
@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "index out ouf bounds:")]
+    #[should_panic(expected = "index out of bounds:")]
     fn test_index_mut_out_of_bounds() {
         let mut sut: SegmentArray<i32> = SegmentArray::new();
         sut.push(10);
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_thousands_structs() {
+    fn test_push_get_thousands_structs() {
         struct MyData {
             a: u64,
             b: i32,
@@ -761,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_hundred_ints() {
+    fn test_push_get_hundred_ints() {
         let mut sut: SegmentArray<i32> = SegmentArray::new();
         for value in 0..100 {
             sut.push(value);
@@ -847,7 +847,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_many_ints() {
+    fn test_push_get_many_ints() {
         let mut sut: SegmentArray<i32> = SegmentArray::new();
         for value in 0..1_000_000 {
             sut.push(value);
@@ -946,7 +946,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_get_many_instances() {
+    fn test_push_get_many_instances_ints() {
         // test allocating, filling, and then dropping many instances
         for _ in 0..1_000 {
             let mut sut: SegmentArray<usize> = SegmentArray::new();
@@ -954,6 +954,19 @@ mod tests {
                 sut.push(value);
             }
             assert_eq!(sut.len(), 10_000);
+        }
+    }
+
+    #[test]
+    fn test_push_get_many_instances_strings() {
+        // test allocating, filling, and then dropping many instances
+        for _ in 0..1_000 {
+            let mut sut: SegmentArray<String> = SegmentArray::new();
+            for _ in 0..1_000 {
+                let value = ulid::Ulid::new().to_string();
+                sut.push(value);
+            }
+            assert_eq!(sut.len(), 1_000);
         }
     }
 }
