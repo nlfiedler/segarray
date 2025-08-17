@@ -1,6 +1,6 @@
 # Segment Array
 
-This crate contains an implementation of a segment array (also known as a segmented list), as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
+This Rust [crate](https://crates.io/crates/segment-array) contains an implementation of a segment array (also known as a segmented list), as described in this [blog post](https://danielchasehooper.com/posts/segment_array/):
 
 > A data structure with constant time indexing, stable pointers, and works well
 > with arena allocators. ... The idea is straight forward: the structure
@@ -11,11 +11,13 @@ This crate contains an implementation of a segment array (also known as a segmen
 > "holes" of abandoned memory in arena allocators. The layout also allows us to
 > access any index in constant time.
 
-The behavior, memory layout, and performance of this implementation should theoretically be identical to that of the C implementation.
+The functionality, memory layout, and performance of this implementation should be very similar to that of the C implementation.
 
-In theory the segment array expansion _should_ be faster than a `Vec`, but in practice they are about the same. The overhead of the bit-shifts and logarithm operations required for every push operation seems to outweigh the amortized O(1) of the basic geometrically growing array. The benefit of a segment array may only be that it does not leave "holes" of abandoned memory in arena allocators.
+The overhead of the bit-shifts and logarithm operations required for every push operation seems to outweigh the amortized O(1) of the basic geometrically growing `Vec` array. The main benefit of a segment array is that it works well with arena memory allocators.
 
 This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
+
+For a different but similar data structure, see the [nlfiedler/extarray](https://github.com/nlfiedler/extarray) repository for an implementation of Space-Efficient Extensible Arrays in Rust.
 
 ## Examples
 
@@ -47,7 +49,7 @@ Finding memory leaks with [Address Sanitizer](https://clang.llvm.org/docs/Addres
 ```shell
 #!/bin/sh
 env RUSTDOCFLAGS=-Zsanitizer=address RUSTFLAGS=-Zsanitizer=address \
-    cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --example leak_test
+    cargo run -Zbuild-std --target x86_64-unknown-linux-gnu --release --example leak_test
 ```
 
 ## Other Implementations

@@ -29,9 +29,9 @@
 //! This data structure is meant to hold an unknown, though likely large, number
 //! of elements, otherwise `Vec` would be more appropriate. An empty array will
 //! have a hefty size of around 224 bytes.
-//! 
+//!
 //! # Safety
-//! 
+//!
 //! Because this data structure is allocating memory, copying bytes using
 //! pointers, and de-allocating memory as needed, there are many `unsafe` blocks
 //! throughout the code.
@@ -430,7 +430,7 @@ impl<T> Drop for SegArrayIntoIter<T> {
     fn drop(&mut self) {
         if std::mem::needs_drop::<T>() {
             let first_segment = ((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-            let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+            let last_segment = (((self.count - 1) >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             if first_segment == last_segment {
                 // special-case, remaining values are in only one segment
                 let first = self.index - capacity_for_segment_count(first_segment);
