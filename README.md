@@ -15,9 +15,13 @@ The functionality, memory layout, and performance of this implementation should 
 
 The overhead of the bit-shifts and logarithm operations required for every push operation seems to outweigh the amortized O(1) of the basic geometrically growing `Vec` array. The main benefit of a segment array is that it works well with arena memory allocators.
 
-This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes.
+This data structure supports `push` and `pop` operations and does _not_ support inserts or removes at other locations within the array. One exception is the `swap/remove` operation which will retrieve a value from a specified index, overwrite that slot with the value at the end of the array, decrement the count, and return the retrieved value.
 
-For a different but similar data structure, see the [nlfiedler/extarray](https://github.com/nlfiedler/extarray) repository for an implementation of Space-Efficient Extensible Arrays in Rust.
+### Memory Usage
+
+This data structure is meant to hold an unknown, though likely large, number of elements, otherwise `Vec` would be more appropriate. An empty array will have a hefty size of around 224 bytes. The Segment Array has the same growth factor as `Vec` and as such may potentially leave up to 50% of the allocated space unused.
+
+For a resizable array that offers much better space efficiency, see the [nlfiedler/extarray](https://github.com/nlfiedler/extarray) repository for an implementation of **Space-Efficient Extensible Arrays** in Rust.
 
 ## Examples
 
