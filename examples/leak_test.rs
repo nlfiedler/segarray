@@ -24,12 +24,20 @@ fn main() {
     }
     drop(array);
 
-    // IntoIterator: add only enough values to allocate one segment
+    // test pushing many elements then popping all of them
     let mut array: SegmentArray<String> = SegmentArray::new();
-    for _ in 0..64 {
+    for _ in 0..512 {
         let value = ulid::Ulid::new().to_string();
         array.push(value);
     }
+    while !array.is_empty() {
+        array.pop();
+    }
+
+    // IntoIterator: add exactly one element to test special case
+    let mut array: SegmentArray<String> = SegmentArray::new();
+    let value = ulid::Ulid::new().to_string();
+    array.push(value);
     let itty = array.into_iter();
     drop(itty);
 
