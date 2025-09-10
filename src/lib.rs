@@ -676,6 +676,18 @@ mod tests {
     }
 
     #[test]
+    fn test_push_many_pop_all_verify() {
+        // push many values, then pop all off and verify
+        let mut sut: SegmentArray<usize> = SegmentArray::new();
+        for value in 0..16384 {
+            sut.push(value);
+        }
+        for value in (0..16384).rev() {
+            assert_eq!(sut.pop(), Some(value));
+        }
+    }
+
+    #[test]
     fn test_pop_if() {
         let mut sut: SegmentArray<u32> = SegmentArray::new();
         assert!(sut.pop_if(|_| panic!("should not be called")).is_none());
