@@ -2,9 +2,8 @@
 // Copyright (c) 2025 Nathan Fiedler
 //
 
-//! An append-only (no insert or remove) growable array as described in the
-//! [blog post](https://danielchasehooper.com/posts/segment_array/) by Daniel
-//! Hooper.
+//! An implmentation of the segment array as described in the [blog
+//! post](https://danielchasehooper.com/posts/segment_array/) by Daniel Hooper.
 //!
 //! From the blog post:
 //!
@@ -19,16 +18,20 @@
 //! > time.
 //!
 //! The behavior, memory layout, and performance of this implementation should
-//! be identical to that of the C implementation. To summarize:
+//! be very similar to that of the C implementation. To summarize:
 //!
 //! * Fixed number of segments (26)
 //! * First segment has a capacity of 64
 //! * Each segment is double the size of its predecessor
 //! * Total capacity of 4,294,967,232 items
 //!
-//! This data structure is meant to hold an unknown, though likely large, number
-//! of elements, otherwise `Vec` would be more appropriate. An empty array will
-//! have a hefty size of around 224 bytes.
+//! # Memory Usage
+//!
+//! An empty segment array is approximately 224 bytes in size and it will have a
+//! space overhead on the order of O(N) due to its geometric growth function
+//! (like `std::vec::Vec`). As elements are added the array will grow by
+//! allocating additional segments. Likewise, as elements are removed from the
+//! end of the array, segments will be deallocated as they become empty.
 //!
 //! # Safety
 //!
@@ -136,6 +139,22 @@ impl<T> SegmentArray<T> {
         self.count += 1;
     }
 
+    /// Deallocate segments as they become empty.
+    fn shrink(&mut self) {
+        if self.used_segments > 0
+            && self.count <= capacity_for_segment_count(self.used_segments - 1)
+        {
+            let segment = self.used_segments - 1;
+            let segment_len = slots_in_segment(segment);
+            let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
+            unsafe {
+                dealloc(self.segments[segment] as *mut u8, layout);
+            }
+            self.segments[segment] = std::ptr::null_mut();
+            self.used_segments -= 1;
+        }
+    }
+
     /// Appends an element if there is sufficient spare capacity, otherwise an
     /// error is returned with the element.
     ///
@@ -162,7 +181,9 @@ impl<T> SegmentArray<T> {
             self.count -= 1;
             let segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let slot = self.count - capacity_for_segment_count(segment);
-            unsafe { Some((self.segments[segment].add(slot)).read()) }
+            let value = unsafe { Some((self.segments[segment].add(slot)).read()) };
+            self.shrink();
+            value
         } else {
             None
         }
@@ -271,6 +292,7 @@ impl<T> SegmentArray<T> {
             let slot = self.count - capacity_for_segment_count(segment);
             let last_ptr = self.segments[segment].add(slot);
             std::ptr::copy(last_ptr, index_ptr, 1);
+            self.shrink();
             value
         }
     }
@@ -290,30 +312,41 @@ impl<T> SegmentArray<T> {
     /// Note that this method has no effect on the allocated capacity of the
     /// segment array.
     pub fn clear(&mut self) {
-        if self.count > 0 {
-            if std::mem::needs_drop::<T>() {
-                // find the last segment that contains values
-                let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
-                let last_slot = self.count - capacity_for_segment_count(last_segment);
+        if self.count > 0 && std::mem::needs_drop::<T>() {
+            // find the last segment that contains values
+            let last_segment = ((self.count >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
+            let last_slot = self.count - capacity_for_segment_count(last_segment);
+            unsafe {
+                std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
+                    self.segments[last_segment],
+                    last_slot,
+                ));
+            }
+            // now drop the values in all of the preceding segments
+            for segment in 0..last_segment {
+                let segment_len = slots_in_segment(segment);
                 unsafe {
                     std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
-                        self.segments[last_segment],
-                        last_slot,
+                        self.segments[segment],
+                        segment_len,
                     ));
                 }
-                // now drop the values in all of the preceding segments
-                for segment in 0..last_segment {
-                    let segment_len = slots_in_segment(segment);
-                    unsafe {
-                        std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
-                            self.segments[segment],
-                            segment_len,
-                        ));
-                    }
-                }
             }
-            self.count = 0;
         }
+        self.count = 0;
+
+        // deallocate the segments themselves and clear everything
+        for segment in 0..self.used_segments {
+            if !self.segments[segment].is_null() {
+                let segment_len = slots_in_segment(segment);
+                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
+                unsafe {
+                    dealloc(self.segments[segment] as *mut u8, layout);
+                }
+                self.segments[segment] = std::ptr::null_mut();
+            }
+        }
+        self.used_segments = 0;
     }
 }
 
@@ -340,20 +373,7 @@ impl<T> fmt::Display for SegmentArray<T> {
 
 impl<T> Drop for SegmentArray<T> {
     fn drop(&mut self) {
-        // perform the drop_in_place() for all of the values
         self.clear();
-        // deallocate the segments themselves and clear everything
-        for segment in 0..self.used_segments {
-            if !self.segments[segment].is_null() {
-                let segment_len = slots_in_segment(segment);
-                let layout = Layout::array::<T>(segment_len).expect("unexpected overflow");
-                unsafe {
-                    dealloc(self.segments[segment] as *mut u8, layout);
-                }
-                self.segments[segment] = std::ptr::null_mut();
-            }
-        }
-        self.used_segments = 0;
     }
 }
 
@@ -642,6 +662,7 @@ mod tests {
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
         let mut sut: SegmentArray<String> = SegmentArray::new();
+        assert_eq!(sut.capacity(), 0);
         assert!(sut.pop().is_none());
         for item in inputs {
             sut.push(item.to_owned());
@@ -666,6 +687,7 @@ mod tests {
             sut.pop();
         }
         assert_eq!(sut.len(), 0);
+        assert_eq!(sut.capacity(), 0);
         for item in inputs {
             sut.push(item.to_owned());
         }
@@ -685,6 +707,8 @@ mod tests {
         for value in (0..16384).rev() {
             assert_eq!(sut.pop(), Some(value));
         }
+        assert_eq!(sut.len(), 0);
+        assert_eq!(sut.capacity(), 0);
     }
 
     #[test]
