@@ -17,9 +17,12 @@ The overhead of the bit-shifts and logarithm operations required for every push 
 
 This data structure supports `push` and `pop` operations and does _not_ support inserts or removes at other locations within the array. One exception is the `swap/remove` operation which will retrieve a value from a specified index, overwrite that slot with the value at the end of the array, decrement the count, and return the retrieved value.
 
-* [Optimal Arrays](https://github.com/nlfiedler/optarray)
+* [Optimal Arrays (Brodnik et. al.)](https://github.com/nlfiedler/optarray)
     - Memory overhead on the order of O(√N) and O(1) running time for most operations
     - Markedly slower for repeated push operations due to the locate calculations
+* [Optimal Arrays (Tarjan and Zwick)](https://github.com/nlfiedler/tzarrays)
+    - O(rN^1/r) space overhead and similar O(1) running time for most operations
+    - Copying during grow/shrink adds significant time to overall performance
 * [Extensible Arrays](https://github.com/nlfiedler/extarray)
     - Memory overhead on the order of O(√N) and O(1) running time for most operations
     - Markedly slower for repeated push operations due to the locate calculations
