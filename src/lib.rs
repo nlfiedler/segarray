@@ -448,7 +448,7 @@ impl<T> Iterator for SegArrayIntoIter<T> {
 
 impl<T> Drop for SegArrayIntoIter<T> {
     fn drop(&mut self) {
-        if std::mem::needs_drop::<T>() {
+        if self.count > 0 && std::mem::needs_drop::<T>() {
             let first_segment = ((self.index >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             let last_segment = (((self.count - 1) >> SMALL_SEGMENTS_TO_SKIP) + 1).ilog2() as usize;
             if first_segment == last_segment {
@@ -913,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn test_array_intoiterator() {
+    fn test_array_into_iterator() {
         // an array that only requires a single segment
         let inputs = [
             "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
@@ -929,7 +929,13 @@ mod tests {
     }
 
     #[test]
-    fn test_array_intoiterator_drop_tiny() {
+    fn test_into_iterator_drop_empty() {
+        let sut: SegmentArray<String> = SegmentArray::new();
+        assert_eq!(sut.into_iter().count(), 0);
+    }
+
+    #[test]
+    fn test_array_into_iterator_drop_tiny() {
         // an array that only requires a single segment and only some need to be
         // dropped after partially iterating the values
         let inputs = [
@@ -948,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn test_array_intoiterator_drop_large() {
+    fn test_array_into_iterator_drop_large() {
         // by adding 512 values and iterating less than 64 times, there will be
         // values in the first segment and some in the last segment, and two
         // segments inbetween that all need to be dropped

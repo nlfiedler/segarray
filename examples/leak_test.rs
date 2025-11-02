@@ -55,4 +55,5 @@ fn main() {
             break;
         }
     }
+    println!("segment array tests complete");
 }
