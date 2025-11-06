@@ -462,7 +462,7 @@ impl<T> Drop for SegArrayIntoIter<T> {
                         std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(first, len));
                     }
                 }
-            } else {
+            } else if first_segment < last_segment {
                 // drop values in the first segment that still has values to be
                 // visited
                 let first = self.index - capacity_for_segment_count(first_segment);
@@ -951,6 +951,18 @@ mod tests {
             }
         }
         // implicitly drop()
+    }
+
+    #[test]
+    fn test_array_into_iterator_edge_case() {
+        // iterate to the end (of the last data block)
+        let mut sut: SegmentArray<String> = SegmentArray::new();
+        for _ in 0..64 {
+            let value = ulid::Ulid::new().to_string();
+            sut.push(value);
+        }
+        assert_eq!(64, sut.into_iter().count());
+        // sut.len(); // error: ownership of sut was moved
     }
 
     #[test]
